@@ -1,0 +1,192 @@
+---
+title: "ESW Data Analysis and Visualization"
+author: "Jeho Park"
+date: "4/21/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Raw Energy and Temperature Data
+
+Pomona College's Studio Art building energy data.
+
+The CSV file, Pomona_StudioArt_EnergyDemand_1yr.csv, contains raw energy and temperature data for different components
+
+- Studio Art = total energy demand
+
+- PV = solar panels
+
+- Chiller = Machine for air conditioning
+
+- MDB-AHU = air handling units
+
+- LDB = light distribution board 
+
+- H1 = other room lighting
+
+In this workshop, we will 
+
+- Import csv data file in to a data frame.
+
+- Examine the raw data.
+
+- Subset the data into different data frame objects using tidyverse packages (Data Wrangling).
+
+- Plot demand and temperature in one graph using ggplot2 package.
+
+## Get Ready (w/ RStudio Project)
+
+(1) Download the csv file into your desktop or 
+(2) Open RStudio
+(3) Create a new project (File > New Project)
+(4) Move the csv file into your project folder
+
+## Import CSV data
+(1) Click on the csv file
+(2) Select Import Dataset...
+(3) Check out the options and rename the data set `df`
+
+The data set you just imported is now data frame object in your environment. (Check out the Global Environment)
+
+Columns are variables and rows are observations. Let's check out the names of the columns of the data frame:
+```{r class}
+names(df)
+```
+
+## Data Preparation
+
+### Name Change
+Let's simplify the names to something meaningful yet shorter than current ones.
+```{r names, eval=FALSE}
+header <- c("Timestamp","SA.demand","PV.demand","CH.demand","MDB.demand","LDB.demand","H1.demand","LDB.temp","CH.temp","H1.temp","MDB.temp","PV.temp","SA.temp")
+names(df) <- header
+names(df)
+```
+
+### Subset the data set
+Let's create a new data frame that only contains Studio Art's demand and temperature columns along with Timestamp column. There are different ways to subset data frame. The following shows two simple ways.
+
+```{r sa_subsetting, eval=FALSE}
+sa <- subset(df, select = c("Timestamp","SA.demand","SA.temp"))
+sa1 <- df[,c(1,2,13)]
+# Are these identical?
+identical(sa, sa1)
+```
+
+Now let's do this subsetting for all the other sensors (devices) data. Remember we have six sensors (devices): `SA`, `PV`, `CH`, `MDB`, `LDB`, and `H1`.
+
+```{r all_subsetting, eval=FALSE}
+pv <- subset(df, select = c("Timestamp","PV.demand","PV.temp"))
+ch <- subset(df, select = c("Timestamp","CH.demand","CH.temp"))
+mdb <- subset(df, select = c("Timestamp","MDB.demand","MDB.temp"))
+ldb <- subset(df, select = c("Timestamp","LDB.demand","LDB.temp"))
+h1 <- subset(df, select = c("Timestamp","H1.demand","H1.temp"))
+```
+
+Now we want to see simple summary stats of these data.
+```{r summary_stats, eval=FALSE}
+summary(pv)
+```
+Something doesn't seem to right... Look at the demand class. It is always recommended to check the class of converted/imported data frame's columns.
+
+How can we change the character objects to numeric objects?
+
+```{r numeric, eval=FALSE}
+sa$SA.demand <- as.numeric(sa$SA.demand)
+pv$PV.demand <- as.numeric(pv$PV.demand)
+ch$CH.demand <- as.numeric(ch$CH.demand)
+mdb$MDB.demand <- as.numeric(mdb$MDB.demand)
+ldb$LDB.demand <- as.numeric(ldb$LDB.demand)
+h1$H1.demand <- as.numeric(h1$H1.demand)
+```
+
+## Data Visualization with Simple Plotting
+
+Let's try plotting our `sa` data frame. 
+
+```{r sa_plot, eval=FALSE}
+library(ggplot2) # requires for qplot
+# install.packages("ggplot2")
+qplot(Timestamp, SA.demand, data=sa, geom="line") 
+```
+
+### Further Subsetting 
+
+I see two problems here: NAs and too many data points. There are missing values in the data set. `SA.demand` and the plot shows the one full year of data, so there are too many data points. I can subset around a month, for example, August:
+
+```{r sa_aug, eval=FALSE}
+sa.aug <- subset(sa, 
+                 format(`Timestamp`, "%Y-%m-%d") >= "2017-08-01" &
+                 format(`Timestamp`, "%Y-%m-%d") < "2017-09-01")
+
+qplot(Timestamp, SA.demand, data=sa.aug, geom="line") 
+```
+
+For more information about subsetting data frame, see https://www.r-bloggers.com/5-ways-to-subset-a-data-frame-in-r/ for example.
+
+## Tidy Data
+
+See https://ramnathv.github.io/pycon2014-r/explore/tidy.html
+
+> What is Tidy Data?
+> A dataset is said to be tidy if it satisfies the following conditions:
+> 
+> - observations are in rows
+>
+> - variables are in columns
+>
+> - contained in a single dataset.
+>
+> Tidy data makes it easy to carry out data analysis.
+>
+
+Look at this example:
+
+```{r sa_tidy, eval=FALSE}
+library("reshape2") # need for melt
+
+sa_tidy <- melt(sa, id = "Timestamp", 
+                variable.name = "type", 
+                value.name = "value", 
+                na.rm = TRUE)
+head(sa_tidy)
+```
+
+Let's subset August 2017 data using the tidy data:
+
+```{r sa_tidy_subset, eval=FALSE}
+# subet sa_tidy into August data
+sa_tidy.aug <- subset(sa_tidy, format(Timestamp, "%m") == "08", na.rm = TRUE)
+
+# subset sa into demand and temp
+sa_tidy.aug.demand <- subset(sa_tidy.aug, type=="SA.demand")
+sa_tidy.aug.temp <- subset(sa_tidy.aug, type=="SA.temp")
+
+# quick plot for SA Demand and Temp
+qplot(Timestamp, value, data=sa_tidy.aug.demand, geom="line")
+qplot(Timestamp, value, data=sa_tidy.aug.temp, geom="line")
+
+# Use ggplot to display two values corresponding to different types
+ggplot(data=sa_tidy.aug,
+       aes(x=Timestamp, y=value, colour=type)) +
+  geom_line()
+
+```
+
+## Export data frame as a CSV file
+```{r data_export, eval=FALSE}
+write.csv(sa_tidy, file = "sa_tidy.csv")
+```
+
+## Adding secondary axis
+```{r secondary_axis, eval=FALSE}
+p <- ggplot(data=sa_tidy.aug,
+       aes(x=Timestamp, y=value, colour=type)) +
+  geom_line()
+
+p + scale_y_continuous("MSCI Value", sec.axis = sec_axis(~ . /300, name = "Interest Rate")
+p
+```
